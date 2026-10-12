@@ -1,12 +1,9 @@
 // Attendify Service Worker
 // Handles asset caching and class time notifications
 
-const CACHE_NAME = 'attendify-v3';
+const CACHE_NAME = 'attendify-v4';
 const STATIC_ASSETS = [
-    '/',
-    '/calendar',
-    '/calculator',
-    '/profile',
+    '/logo.png',
     '/js/main.js',
     '/js/geo.js',
     '/manifest.json',
@@ -40,7 +37,8 @@ self.addEventListener('fetch', event => {
     if (url.origin !== self.location.origin) return;
 
     // API calls: always network-only (let browser handle directly)
-    if (url.pathname.startsWith('/api/')) return;
+    if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/') ||
+        event.request.mode === 'navigate' || url.pathname.endsWith('.html')) return;
 
     // CRITICAL: Never intercept Clerk auth requests — let browser handle them directly
     // This includes __clerk_handshake tokens, sign-in/sign-up pages, and SSO callbacks

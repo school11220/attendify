@@ -65,21 +65,9 @@ window.showToast = function (message, type = 'success', actionCallback = null, a
     }, 3000);
 }
 
-window.waitForClerk = async function (timeoutMs = 10000) {
-    const start = Date.now();
-
-    while (typeof window.Clerk === 'undefined') {
-        if (Date.now() - start >= timeoutMs) {
-            if (window.showToast) {
-                window.showToast('Authentication failed to load', 'error');
-            }
-            return null;
-        }
-        await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    await window.Clerk.load();
-    return window.Clerk;
+window.waitForClerk = async function () {
+    try { return await window.attendifyAuthReady; }
+    catch (_) { window.showToast('Sign-in is temporarily unavailable. Please reload.', 'error'); return null; }
 };
 
 window.getLocalDateString = function (date = new Date()) {

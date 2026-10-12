@@ -67,8 +67,8 @@ class DataService {
 
             return d;
         } catch (err) {
-            console.error('Error reading Clerk metadata:', err);
-            return defaultUserData();
+            console.error('Error reading Clerk metadata:', err.name);
+            throw new Error('Unable to read attendance data. Please try again.');
         }
     }
 
@@ -78,7 +78,7 @@ class DataService {
                 privateMetadata: { attendify: userData }
             });
         } catch (err) {
-            console.error('Error writing Clerk metadata:', err);
+            console.error('Error writing Clerk metadata:', err.name);
             throw err;
         }
     }

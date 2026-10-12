@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Attendify - Analytics</title>
+    <link rel="icon" href="/logo.png" type="image/png">
+
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#050505">
+
+    <!-- Clerk Auth -->
+    <script src="/auth/clerk.js"></script>
+
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="/css/style.css">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#ff3b3b",
+                        "accent-red": "#ff4d4d",
+                        "dark-red": "#7a0000",
+                        "deep-bg": "#050505",
+                        "card-bg": "#0d0d0d",
+                        "border-color": "#1f1f1f",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                },
+            },
+        }
+    </script>
+</head>
+
+<body class="dark bg-deep-bg text-white font-display min-h-screen flex flex-col" x-data="analyticsView()"
+    x-init="initData()">
+
+    <header
+        class="hidden md:flex items-center justify-between border-b border-border-color bg-deep-bg px-4 sm:px-10 py-4 sticky top-0 z-50">
+        <div class="flex items-center gap-4 sm:gap-10">
+            <div class="flex items-center gap-3 text-primary">
+                <span class="material-symbols-outlined text-3xl font-black">analytics</span>
+                <h2
+                    class="text-white text-lg sm:text-xl font-black uppercase tracking-[0.2em] leading-tight hidden sm:block">
+                    Attendify</h2>
+            </div>
+        </div>
+
+        <div class="flex flex-1 justify-end gap-4 sm:gap-6 sm:gap-10 items-center">
+                        <nav class="hidden md:flex items-center gap-8">
+                <a class="text-neutral-500 hover:text-white transition-all text-[10px] sm:text-xs font-bold uppercase tracking-widest" href="/">Dashboard</a>
+                <a class="text-neutral-500 hover:text-white transition-all text-[10px] sm:text-xs font-bold uppercase tracking-widest" href="/subjects">Subjects</a>
+                <a class="text-neutral-500 hover:text-white transition-all text-[10px] sm:text-xs font-bold uppercase tracking-widest" href="/calendar">Calendar</a>
+                <a class="text-primary border-b border-primary py-1 text-[10px] sm:text-xs font-bold uppercase tracking-widest" href="/analytics">Analytics</a>
+                <a class="text-neutral-500 hover:text-white transition-all text-[10px] sm:text-xs font-bold uppercase tracking-widest" href="/calculator">Calculator</a>
+                <a class="text-neutral-500 hover:text-white transition-all text-[10px] sm:text-xs font-bold uppercase tracking-widest" href="/profile">Profile</a>
+            </nav>
+            <div class="hidden">
+                <div id="user-button"></div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Mobile Bottom Nav -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-deep-bg border-t border-border-color z-50 flex justify-around items-center pt-2 pb-4 px-2 shadow-[0_-10px_40px_rgba(0,0,0,0.8)]">
+        <a href="/" class="flex flex-col items-center gap-1 p-2 text-neutral-500 hover:text-white transition-colors">
+            <span class="material-symbols-outlined text-[24px]">home</span>
+            <span class="text-[9px] font-black uppercase tracking-widest">Home</span>
+        </a>
+        <a href="/subjects" class="flex flex-col items-center gap-1 p-2 text-neutral-500 hover:text-white transition-colors">
+            <span class="material-symbols-outlined text-[24px]">library_books</span>
+            <span class="text-[9px] font-black uppercase tracking-widest">Subjects</span>
+        </a>
+        <a href="/calendar" class="flex flex-col items-center gap-1 p-2 text-neutral-500 hover:text-white transition-colors">
+            <span class="material-symbols-outlined text-[24px]">calendar_month</span>
+            <span class="text-[9px] font-black uppercase tracking-widest">Calendar</span>
+        </a>
+        <a href="/analytics" class="flex flex-col items-center gap-1 p-2 text-primary">
+            <span class="material-symbols-outlined text-[24px]">insights</span>
+            <span class="text-[9px] font-black uppercase tracking-widest">Analytics</span>
+        </a>
+        <a href="/profile" class="flex flex-col items-center gap-1 p-2 text-neutral-500 hover:text-white transition-colors">
+            <span class="material-symbols-outlined text-[24px]">person</span>
+            <span class="text-[9px] font-black uppercase tracking-widest">Profile</span>
+        </a>
+    </nav>
+
+    <main class="flex-1 w-full max-w-[1280px] mx-auto px-4 sm:px-10 pt-4 sm:pt-10 pb-24 md:pb-10 relative"
+        id="main-content" style="opacity: 0; transition: opacity 0.5s ease;">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+            <div>
+                <h1 class="text-3xl sm:text-5xl font-black leading-none tracking-tighter uppercase text-white">Analytics
+                </h1>
+                <p class="text-neutral-500 text-sm mt-2">Visual insights and historical trends.</p>
+            </div>
+        </div>
+
+        <template x-if="loading">
+            <div class="text-center py-10 text-neutral-500 italic text-sm">Loading charts data...</div>
+        </template>
+        <template x-if="!loading && subjectsData.length === 0">
+            <div
+                class="text-center py-10 text-neutral-500 italic text-sm border border-dashed border-border-color rounded-lg h-40 flex items-center justify-center bg-white/5">
+                No subjects found to analyze. Please add subjects first.</div>
+        </template>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-8" x-show="!loading && subjectsData.length > 0"
+            style="display: none;">
+
+            <div
+                class="bg-card-bg border border-border-color rounded p-4 sm:p-6 neo-shadow flex flex-col w-full h-[350px]">
+                <h3
+                    class="text-white text-sm font-black uppercase tracking-[0.2em] border-l-2 border-primary pl-3 mb-6">
+                    30-Day Trend</h3>
+                <div class="flex-1 w-full relative">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+
+            <div
+                class="bg-card-bg border border-border-color rounded p-4 sm:p-6 neo-shadow flex flex-col w-full h-[350px]">
+                <h3
+                    class="text-white text-sm font-black uppercase tracking-[0.2em] border-l-2 border-primary pl-3 mb-6">
+                    Subject standing</h3>
+                <div class="flex-1 w-full relative">
+                    <canvas id="subjectChart"></canvas>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <div id="toast-container"
+        class="fixed top-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-80 z-[9999] flex flex-col gap-2 pointer-events-none">
+    </div>
+
+    <script src="/js/main.js"></script>
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('analyticsView', () => ({
+                loading: true,
+                trendData: [],
+                subjectsData: [],
+
+                async initData() {
+                    window.addEventListener('load', async () => {
+                        const clerk = await window.waitForClerk();
+                        if (!clerk) { this.loading = false; return; }
+                        const userButtonDiv = document.getElementById('user-button');
+                        if (Clerk.user) {
+                            Clerk.mountUserButton(userButtonDiv);
+                            document.getElementById('main-content').style.opacity = '1';
+                            await this.fetchData();
+                            this.$nextTick(() => {
+                                this.renderTrendChart();
+                                this.renderSubjectChart();
+                            });
+                        } else {
+                            window.location.href = '/sign-in';
+                        }
+                    });
+                },
+
+                async fetchData() {
+                    this.loading = true;
+                    try {
+                        const [trendRes, dashRes] = await Promise.all([
+                            fetch('/api/analytics/trend'),
+                            fetch('/api/dashboard')
+                        ]);
+                        this.trendData = await trendRes.json();
+                        const dash = await dashRes.json();
+                        this.subjectsData = dash.subjects || [];
+                    } catch (e) {
+                        console.error('Error fetching analytics', e);
+                        window.showToast('Failed to load chart data', 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                renderTrendChart() {
+                    if (!this.trendData || this.trendData.length === 0) return;
+
+                    const ctx = document.getElementById('trendChart');
+                    if (!ctx) return;
+                    if (window.trendChartInstance) window.trendChartInstance.destroy();
+
+                    const labels = this.trendData.map(d => {
+                        const dt = new Date(d.date);
+                        return dt.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+                    });
+                    const presentData = this.trendData.map(d => d.present);
+                    const absentData = this.trendData.map(d => -d.absent); // Reverse for visual impact
+
+                    Chart.defaults.color = '#737373';
+                    Chart.defaults.font.family = "'Inter', sans-serif";
+
+                    window.trendChartInstance = new Chart(ctx, {
+                        type: 'bar', // A stacked bar might be cooler for dates
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                {
+                                    label: 'Attended',
+                                    data: presentData,
+                                    backgroundColor: '#ff3b3b',
+                                    borderRadius: 4
+                                },
+                                {
+                                    label: 'Absent',
+                                    data: absentData,
+                                    backgroundColor: '#525252',
+                                    borderRadius: 4
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                    align: 'end',
+                                    labels: { boxWidth: 10, usePointStyle: true, font: { size: 10, weight: 'bold' } }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function (context) {
+                                            return context.dataset.label + ': ' + Math.abs(context.raw);
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    stacked: true,
+                                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                    ticks: {
+                                        callback: function (value) { return Math.abs(value); },
+                                        stepSize: 1
+                                    }
+                                },
+                                x: {
+                                    stacked: true,
+                                    grid: { display: false }
+                                }
+                            }
+                        }
+                    });
+                },
+
+                renderSubjectChart() {
+                    if (!this.subjectsData || this.subjectsData.length === 0) return;
+
+                    const ctx = document.getElementById('subjectChart');
+                    if (!ctx) return;
+                    if (window.subjectChartInstance) window.subjectChartInstance.destroy();
+
+                    const labels = this.subjectsData.map(s => s.subject_name.length > 12 ? s.subject_name.substring(0, 12) + '...' : s.subject_name);
+                    const pctData = this.subjectsData.map(s => s.current_percentage);
+                    const reqData = this.subjectsData.map(s => s.min_requirement_percentage);
+
+                    window.subjectChartInstance = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                {
+                                    label: 'Current %',
+                                    data: pctData,
+                                    backgroundColor: pctData.map((pct, i) => pct >= reqData[i] ? 'rgba(255, 255, 255, 0.9)' : '#ff3b3b'),
+                                    borderRadius: 4,
+                                    barPercentage: 0.6,
+                                    order: 2
+                                },
+                                {
+                                    label: 'Requirement %',
+                                    data: reqData,
+                                    type: 'line',
+                                    borderColor: '#525252',
+                                    borderWidth: 2,
+                                    borderDash: [5, 5],
+                                    pointRadius: 0,
+                                    fill: false,
+                                    order: 1
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                    align: 'end',
+                                    labels: { boxWidth: 10, usePointStyle: true, font: { size: 10, weight: 'bold' } }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    max: 100,
+                                    grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                                },
+                                x: {
+                                    grid: { display: false },
+                                    ticks: { font: { size: 10, weight: 'bold' } }
+                                }
+                            }
+                        }
+                    });
+                }
+            }));
+        });
+    </script>
+    <!-- Toast container - fixed popup below any header -->
+    <div id="toast-container" class="fixed top-20 right-4 z-[9999] flex flex-col gap-2 pointer-events-none w-72 max-w-[calc(100vw-2rem)]"></div>
+    <script src="/js/geo.js"></script>
+<footer style="text-align:center;padding:24px;color:#a3a3a3"><a href="/privacy">Privacy policy</a> · <a href="/terms">Terms of service</a></footer></body>
+
+</html>

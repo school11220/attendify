@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node --max-http-header-size=32768 app.js"
+    "start": "node --max-http-header-size=32768 app.js",
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",
