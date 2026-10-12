@@ -1,3 +1,4 @@
+const clerkRequest = require('./clerkRequest');
 const { clerkClient } = require('@clerk/express');
 
 function normalizePercentage(value, fallback = 75.0) {
@@ -29,13 +30,11 @@ class DataService {
 
     static async getUserData(userId) {
         try {
-            const user = await clerkClient.users.getUser(userId);
+            const user = await clerkRequest(() => clerkClient.users.getUser(userId));
             const meta = user.privateMetadata;
             if (!meta || !meta.attendify) {
                 const data = defaultUserData();
-                await clerkClient.users.updateUserMetadata(userId, {
-                    privateMetadata: { attendify: data }
-                });
+                // Empty accounts remain read-only until their first explicit save.
                 return data;
             }
             const d = meta.attendify;
@@ -74,11 +73,11 @@ class DataService {
 
     static async saveUserData(userId, userData) {
         try {
-            await clerkClient.users.updateUserMetadata(userId, {
+            await clerkRequest(() => clerkClient.users.updateUserMetadata(userId, {
                 privateMetadata: { attendify: userData }
-            });
+            }));
         } catch (err) {
-            console.error('Error writing Clerk metadata:', err.name);
+            console.error('Error writing Clerk metadata:', err.name, err.errors?.map(error => error.code));
             throw err;
         }
     }

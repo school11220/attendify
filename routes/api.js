@@ -1,6 +1,9 @@
 const express = require('express');
 const DataService = require('../services/dataService');
 const CalculatorService = require('../services/calculatorService');
+const { CalendarService, validDate, isExcluded } = require('../services/calendarService');
+const AccountService = require('../services/accountService');
+const { clerkClient } = require('@clerk/express');
 
 const router = express.Router();
 const VALID_ATTENDANCE_STATUSES = new Set(['present', 'absent', 'extra']);
@@ -191,6 +194,13 @@ router.post('/attendance/mark', requireAuth, async (req, res) => {
         if (!isValidDateString(date)) {
             return res.status(400).json({ error: 'Invalid attendance date' });
         }
+        if (req.body.source === 'auto' && !(await AccountService.getPreferences(req.userId)).autoAttendance) {
+            return res.status(409).json({ error: 'Location-assisted attendance is disabled for this account.' });
+        }
+        const calendar = await CalendarService.get(req.userId);
+        if (status !== 'extra' && isExcluded(calendar, date, subjectId)) {
+            return res.status(409).json({ error: 'This date is a holiday or these classes are cancelled. Regular attendance is not counted; use Extra for a class that actually took place.' });
+        }
         await DataService.markAttendance(req.userId, subjectId, status, date);
         res.json({ success: true });
     } catch (err) {
@@ -294,10 +304,10 @@ router.get('/analytics/trend', requireAuth, async (req, res) => {
 // GET /api/export
 router.get('/export', requireAuth, async (req, res) => {
     try {
-        const userData = await DataService.getUserData(req.userId);
+        const [userData, calendar, settings] = await Promise.all([DataService.getUserData(req.userId), CalendarService.get(req.userId), AccountService.getPreferences(req.userId)]);
         res.setHeader('Content-disposition', `attachment; filename=attendify_backup_${req.userId}.json`);
         res.setHeader('Content-type', 'application/json');
-        res.send(JSON.stringify(userData, null, 2));
+        res.send(JSON.stringify({ ...userData, calendar, settings }, null, 2));
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -310,7 +320,16 @@ router.post('/import', requireAuth, async (req, res) => {
         if (!incomingData || !incomingData.profile || !Array.isArray(incomingData.subjects)) {
             return res.status(400).json({ error: 'Invalid file format. Ensure it is a valid Attendify export.' });
         }
-        await DataService.saveUserData(req.userId, incomingData);
+        const { calendar, settings, ...attendance } = incomingData;
+        if (calendar !== undefined && (!calendar || !Array.isArray(calendar.holidays) || !Array.isArray(calendar.cancellations) || calendar.holidays.some(date => !validDate(date)) || calendar.cancellations.some(item => !item || !validDate(item.date) || typeof item.subjectId !== 'string' || !attendance.subjects.some(subject => subject.id === item.subjectId)))) {
+            return res.status(400).json({ error: 'Invalid holiday or cancelled-class backup data' });
+        }
+        if (settings !== undefined && (!settings || ['autoAttendance', 'reminders'].some(key => typeof settings[key] !== 'boolean'))) {
+            return res.status(400).json({ error: 'Invalid privacy preferences in backup' });
+        }
+        await DataService.saveUserData(req.userId, attendance);
+        if (calendar !== undefined) await CalendarService.save(req.userId, calendar);
+        if (settings !== undefined) await AccountService.setPreferences(req.userId, { autoAttendance: settings.autoAttendance, reminders: settings.reminders });
         res.json({ success: true, message: 'Data imported successfully' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -436,4 +455,67 @@ router.put('/settings/location', requireAuth, async (req, res) => {
     }
 });
 
+// Calendar exceptions belong to the authenticated account, independently of attendance.
+router.get('/calendar/exceptions', requireAuth, async (req, res, next) => {
+    try { res.json(await CalendarService.get(req.userId)); } catch (err) { next(err); }
+});
+router.put('/calendar/holidays/:date', requireAuth, async (req, res, next) => {
+    if (!validDate(req.params.date) || typeof req.body.enabled !== 'boolean') return res.status(400).json({ error: 'A valid date and enabled boolean are required' });
+    try { res.json(await CalendarService.holiday(req.userId, req.params.date, req.body.enabled)); } catch (err) { next(err); }
+});
+router.put('/calendar/cancellations', requireAuth, async (req, res, next) => {
+    const { date, subjectId, enabled } = req.body;
+    if (!validDate(date) || typeof subjectId !== 'string' || typeof enabled !== 'boolean') return res.status(400).json({ error: 'A valid date, subjectId and enabled boolean are required' });
+    try {
+        if (!(await DataService.getSubjectById(req.userId, subjectId))) return res.status(404).json({ error: 'Subject not found' });
+        res.json(await CalendarService.cancel(req.userId, date, subjectId, enabled));
+    } catch (err) { next(err); }
+});
+router.get('/settings/preferences', requireAuth, async (req, res, next) => {
+    try { res.json(await AccountService.getPreferences(req.userId)); } catch (err) { next(err); }
+});
+router.put('/settings/preferences', requireAuth, async (req, res, next) => {
+    const settings = {};
+    for (const key of ['autoAttendance', 'reminders']) {
+        if (req.body[key] !== undefined) {
+            if (typeof req.body[key] !== 'boolean') return res.status(400).json({ error: 'Preferences must be booleans' });
+            settings[key] = req.body[key];
+        }
+    }
+    if (!Object.keys(settings).length) return res.status(400).json({ error: 'No preferences supplied' });
+    try { res.json(await AccountService.setPreferences(req.userId, settings)); } catch (err) { next(err); }
+});
+// Cookie-authenticated destructive actions must originate from this application.
+function sameOrigin(req, res, next) {
+    const origin = req.get('origin');
+    const expected = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+    if (!origin || origin !== expected) return res.status(403).json({ error: 'Use the account controls from this application.' });
+    next();
+}
+async function recentVerification(req, res, next) {
+    const auth = typeof req.auth === 'function' ? req.auth() : req.auth;
+    const fva = auth.sessionClaims?.fva;
+    let fresh = Array.isArray(fva) && fva.length === 2 && Number.isFinite(fva[0]) && fva[0] >= 0 && fva[0] < 10 && (fva[1] === -1 || (Number.isFinite(fva[1]) && fva[1] >= 0 && fva[1] < 10));
+    // Legacy Clerk tokens lack fva; only a newly created session qualifies.
+    if (!Array.isArray(fva) && auth.sessionId) {
+        try {
+            const session = await clerkClient.sessions.getSession(auth.sessionId);
+            const age = Date.now() - Number(session.createdAt);
+            fresh = session.userId === req.userId && age >= 0 && age < 10 * 60 * 1000;
+        } catch (err) { return next(err); }
+    }
+    if (!fresh) return res.status(403).json({ error: 'Sign out and sign in again before deleting your data or account.', code: 'recent_sign_in_required' });
+    next();
+}
+router.delete('/settings/location', requireAuth, sameOrigin, async (req, res, next) => {
+    try { await AccountService.clearLocation(req.userId); res.json({ success: true }); } catch (err) { next(err); }
+});
+router.delete('/account/data', requireAuth, sameOrigin, recentVerification, async (req, res, next) => {
+    if (req.body?.confirmation !== 'DELETE MY DATA') return res.status(400).json({ error: 'Type DELETE MY DATA to confirm' });
+    try { await AccountService.clearData(req.userId); res.json({ success: true }); } catch (err) { next(err); }
+});
+router.delete('/account', requireAuth, sameOrigin, recentVerification, async (req, res, next) => {
+    if (req.body?.confirmation !== 'DELETE MY ACCOUNT') return res.status(400).json({ error: 'Type DELETE MY ACCOUNT to confirm' });
+    try { await AccountService.deleteAccount(req.userId); res.json({ success: true }); } catch (err) { next(err); }
+});
 module.exports = router;

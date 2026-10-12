@@ -111,3 +111,30 @@ window.calculateWhatIf = function (subject) {
         return { text: `Need ${needToAttend} more`, color: 'text-primary bg-primary/10 border-primary/20' };
     }
 };
+
+// Remove only Attendify-owned browser state; leave Clerk and unrelated data alone.
+window.clearAttendifyBrowserData = async function () {
+    let complete = true;
+    try {
+        Object.keys(localStorage).filter(key => key.startsWith('attendify_') || key.startsWith('geo_marked_')).forEach(key => localStorage.removeItem(key));
+        Object.keys(sessionStorage).filter(key => key.startsWith('attendify_')).forEach(key => sessionStorage.removeItem(key));
+    } catch (_) { complete = false; }
+    try {
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.filter(key => key.startsWith('attendify-')).map(key => caches.delete(key)));
+        }
+    } catch (_) { complete = false; }
+    try {
+        if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const reg of registrations) {
+                reg.active?.postMessage({ type: 'CLEAR_NOTIFICATIONS' });
+                if (typeof reg.getNotifications !== 'function') continue;
+                const notifications = await reg.getNotifications();
+                notifications.filter(notification => notification.tag.startsWith('class-')).forEach(notification => notification.close());
+            }
+        }
+    } catch (_) { complete = false; }
+    return complete;
+};

@@ -678,6 +678,25 @@
                     </button>
                 </div>
             </div>
+
+            <section class="mt-8 rounded bg-card-bg border border-border-color p-6 sm:p-8 neo-shadow" aria-labelledby="data-controls-title">
+                <h3 id="data-controls-title" class="text-sm font-black text-white uppercase tracking-widest mb-4">Privacy and account controls</h3>
+                <p class="text-xs text-neutral-400 leading-relaxed mb-4">These preferences sync to your account. Browser location and notification permissions are controlled separately in your browser settings.</p>
+                <div class="flex flex-col gap-3">
+                    <button :disabled="controlsBusy" @click="changePreference('autoAttendance')" :aria-pressed="preferences.autoAttendance" class="p-3 rounded border border-border-color text-left text-sm"><span x-text="preferences.autoAttendance ? 'Disable location-assisted attendance' : 'Enable location-assisted attendance'"></span></button>
+                    <button :disabled="controlsBusy" @click="changePreference('reminders')" :aria-pressed="preferences.reminders" class="p-3 rounded border border-border-color text-left text-sm"><span x-text="preferences.reminders ? 'Disable class reminders' : 'Enable class reminders'"></span></button>
+                    <button :disabled="controlsBusy" @click="clearSavedLocation()" class="p-3 rounded border border-border-color text-left text-sm">Remove saved college location</button>
+                    <button @click="clearBrowserData()" class="p-3 rounded border border-border-color text-left text-sm">Clear Attendify data stored in this browser</button>
+                </div>
+                <p class="mt-4 text-xs text-neutral-400 leading-relaxed">Export a backup above before deletion. Clearing attendance data removes your entered profile, subjects, history, timetable, holidays, cancellations and saved location, and disables automation. Your sign-in account remains. Deleting your account also deletes its Clerk identity and stored metadata and ends access to its sessions. Downloaded exports, browser data on other devices, and provider operational logs are not removed by these controls.</p>
+                <label for="delete-confirmation" class="block mt-5 mb-2 text-xs text-neutral-400">Type DELETE MY DATA or DELETE MY ACCOUNT</label>
+                <input id="delete-confirmation" x-model="deleteConfirmation" autocomplete="off" class="w-full p-3 rounded bg-deep-bg border border-border-color text-white text-sm">
+                <div class="flex flex-wrap gap-3 mt-3">
+                    <button :disabled="controlsBusy || deleteConfirmation !== 'DELETE MY DATA'" @click="deleteAttendanceData()" class="p-3 rounded border border-red-500/50 text-red-300 text-sm disabled:opacity-40">Delete attendance data</button>
+                    <button :disabled="controlsBusy || deleteConfirmation !== 'DELETE MY ACCOUNT'" @click="deleteAccount()" class="p-3 rounded bg-red-600 text-white text-sm disabled:opacity-40">Permanently delete account</button>
+                </div>
+                <p x-show="reauthRequired" class="mt-4 text-sm text-orange-300">For deletion, sign out and sign in again, then return here within 10 minutes. <button @click="signInAgain()" class="underline">Sign out and sign in again</button></p>
+            </section>
         </main>
 
         <!-- ═══ EDIT TIMETABLE SLOT MODAL ═══ -->
@@ -794,6 +813,10 @@
             document.addEventListener("alpine:init", () => {
                 Alpine.data("profileData", () => ({
                     loading: true,
+                    preferences: { autoAttendance: true, reminders: true },
+                    controlsBusy: false,
+                    deleteConfirmation: '',
+                    reauthRequired: false,
                     detectingLocation: false,
                     editingSlot: null,
 
@@ -847,13 +870,15 @@
 
                     async fetchProfile() {
                         try {
-                            const [profRes, dashRes, ttRes, locRes] =
+                            const [profRes, dashRes, ttRes, locRes, prefRes] =
                                 await Promise.all([
                                     fetch("/api/profile"),
                                     fetch("/api/dashboard"),
                                     fetch("/api/timetable"),
                                     fetch("/api/settings/location"),
+                                    fetch("/api/settings/preferences"),
                                 ]);
+                            if (prefRes.ok) this.preferences = await prefRes.json();
                             if (profRes.ok) this.profile = await profRes.json();
                             if (dashRes.ok) {
                                 const dash = await dashRes.json();
@@ -872,6 +897,65 @@
                         }
                     },
 
+                    async changePreference(key) {
+                        if (this.controlsBusy) return;
+                        this.controlsBusy = true;
+                        try {
+                            const response = await fetch('/api/settings/preferences', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [key]: !this.preferences[key] }) });
+                            const data = await response.json();
+                            if (!response.ok) throw new Error(data.error);
+                            this.preferences = data;
+                            window.dispatchEvent(new Event('attendify-settings-changed'));
+                            if (key === 'reminders' && data.reminders && 'Notification' in window && Notification.permission === 'default') {
+                                await Notification.requestPermission();
+                                window.dispatchEvent(new Event('attendify-settings-changed'));
+                            }
+                            window.showToast('Preference saved to your account', 'success');
+                        } catch (err) { window.showToast(err.message, 'error'); }
+                        finally { this.controlsBusy = false; }
+                    },
+                    async clearSavedLocation() {
+                        if (!confirm('Remove your saved college coordinates? Your attendance records and timetable will stay intact.')) return;
+                        if (!(await this.performControl('/api/settings/location'))) return;
+                        this.geoLocation = { lat: null, lng: null, radius: 150 };
+                    },
+                    async performControl(url, confirmation) {
+                        if (this.controlsBusy) return false;
+                        this.controlsBusy = true;
+                        this.reauthRequired = false;
+                        try {
+                            const response = await fetch(url, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmation }) });
+                            const data = await response.json();
+                            if (!response.ok) {
+                                this.reauthRequired = data.code === 'recent_sign_in_required';
+                                throw new Error(data.error);
+                            }
+                            if (url.startsWith('/api/account')) await window.clearAttendifyBrowserData();
+                            window.dispatchEvent(new Event('attendify-settings-changed'));
+                            window.showToast('Data control completed', 'success');
+                            return true;
+                        } catch (err) { window.showToast(err.message, 'error'); return false; }
+                        finally { this.controlsBusy = false; }
+                    },
+                    async deleteAttendanceData() {
+                        if (this.deleteConfirmation !== 'DELETE MY DATA') return window.showToast('Type DELETE MY DATA to confirm', 'error');
+                        if (await this.performControl('/api/account/data', this.deleteConfirmation)) location.reload();
+                    },
+                    async deleteAccount() {
+                        if (this.deleteConfirmation !== 'DELETE MY ACCOUNT') return window.showToast('Type DELETE MY ACCOUNT to confirm', 'error');
+                        if (await this.performControl('/api/account', this.deleteConfirmation)) {
+                            try { await window.Clerk.signOut(); } catch (_) { /* Deleted account has no active session. */ }
+                            location.assign('/');
+                        }
+                    },
+                    async clearBrowserData() {
+                        const complete = await window.clearAttendifyBrowserData();
+                        window.showToast(complete ? 'Attendify browser data cleared. Downloaded backups are unchanged.' : 'Some browser data could not be cleared. Use your browser site-data settings.', complete ? 'success' : 'error');
+                    },
+                    async signInAgain() {
+                        await window.Clerk.signOut();
+                        location.assign('/sign-in');
+                    },
                     detectLocation() {
                         if (!navigator.geolocation)
                             return window.showToast(

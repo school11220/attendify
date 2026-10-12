@@ -1,7 +1,7 @@
 // Attendify Service Worker
 // Handles asset caching and class time notifications
 
-const CACHE_NAME = 'attendify-v4';
+const CACHE_NAME = 'attendify-v5';
 const STATIC_ASSETS = [
     '/logo.png',
     '/js/main.js',
@@ -89,6 +89,11 @@ self.addEventListener('notificationclick', event => {
 
 // ─── MESSAGE: schedule class notifications ──────────────
 self.addEventListener('message', event => {
+    if (event.data?.type === 'CLEAR_NOTIFICATIONS') {
+        scheduledTimers.forEach(timer => clearTimeout(timer));
+        scheduledTimers.length = 0;
+        event.waitUntil(self.registration.getNotifications().then(notifications => notifications.filter(notification => notification.tag.startsWith('class-')).forEach(notification => notification.close())));
+    }
     if (event.data?.type === 'SCHEDULE_NOTIFICATIONS') {
         scheduleTodayNotifications(event.data.slots);
     }

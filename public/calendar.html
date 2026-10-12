@@ -199,6 +199,7 @@
             </div>
         </div>
 
+        <div class="my-4 text-xs text-neutral-400 leading-relaxed"><p>Yellow: holiday · Purple: cancelled classes. Weekends remain available for scheduled classes.</p><button x-show="hasLegacyHolidays" @click="importLegacyHolidays()" class="mt-2 p-3 rounded border border-yellow-500/40 text-yellow-300">Import holidays saved in this browser</button></div>
         <!-- Date Action Modal Overlay inside the main view for quick actions -->
         <div x-show="isActionModalOpen" style="display:none;"
             class="fixed inset-0 z-[100] flex justify-center items-center px-4">
@@ -253,12 +254,12 @@
                         class="text-[10px] uppercase font-black tracking-widest text-neutral-500 mb-2 border-b border-border-color pb-2">
                         Log New Attendance</p>
                     <div class="grid grid-cols-3 gap-2">
-                        <button @click="submitLog('present')"
+                        <button :disabled="isHoliday(activeDate) || isCancelled(activeDate)" @click="submitLog('present')"
                             class="flex flex-col items-center justify-center p-3 rounded border border-transparent bg-white/5 hover:bg-green-500/20 hover:text-green-500 hover:border-green-500/50 transition-all text-neutral-400">
                             <span class="material-symbols-outlined mb-1">check_circle</span>
                             <span class="text-[9px] font-black uppercase tracking-widest">Present</span>
                         </button>
-                        <button @click="submitLog('absent')"
+                        <button :disabled="isHoliday(activeDate) || isCancelled(activeDate)" @click="submitLog('absent')"
                             class="flex flex-col items-center justify-center p-3 rounded border border-transparent bg-white/5 hover:bg-primary/20 hover:text-primary hover:border-primary/50 transition-all text-neutral-400">
                             <span class="material-symbols-outlined mb-1">cancel</span>
                             <span class="text-[9px] font-black uppercase tracking-widest">Absent</span>
@@ -271,10 +272,16 @@
                     </div>
                 </div>
 
+                <p class="mt-3 text-xs text-neutral-400 leading-relaxed">Holidays apply to every subject. Cancellation applies to all classes of the selected subject on this date. These changes leave existing records untouched; remove incorrect records above. Present/absent marking is blocked on excluded days; Extra remains available for a class that took place.</p>
+                <div class="mt-4 pt-4 border-t border-border-color">
+                    <button :disabled="exceptionsBusy || !selectedSubject" @click="toggleCancellation()" class="w-full p-3 rounded border border-purple-500/40 text-purple-300 bg-purple-500/10">
+                        <span x-text="isCancelled(activeDate) ? 'Restore classes for this subject' : 'Cancel classes for this subject'"></span>
+                    </button>
+                </div>
                 <!-- Holiday toggle -->
                 <div class="mt-4 pt-4 border-t border-border-color">
                     <p class="text-[10px] uppercase font-black tracking-widest text-neutral-500 mb-2 border-b border-border-color pb-2">Holiday</p>
-                    <button @click="toggleHoliday(getFullDateStringForDay(activeDate)); activeDateRecords = getRecordsForDay(activeDate);"
+                    <button :disabled="exceptionsBusy" @click="toggleHoliday(getFullDateStringForDay(activeDate))"
                         class="w-full flex items-center justify-center gap-2 p-3 rounded border transition-all"
                         :class="isHoliday(activeDate) ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-500' : 'bg-white/5 border-border-color text-neutral-400 hover:bg-yellow-500/10 hover:border-yellow-500/30 hover:text-yellow-500'">
                         <span class="material-symbols-outlined text-[18px]">beach_access</span>
@@ -302,8 +309,11 @@
                 selectedSubject: null,
                 history: [],
 
-                // Holidays stored in localStorage { "YYYY-MM-DD": true }
+                // Synced account exceptions; legacy browser holidays require explicit import.
                 holidays: {},
+                cancellations: [],
+                exceptionsBusy: false,
+                hasLegacyHolidays: false,
 
                 // Calendar State
                 currentMonth: new Date().getMonth(),
@@ -331,7 +341,8 @@
                             document.getElementById('main-content').style.opacity = '1';
                             const bar = document.getElementById('nprogress-bar');
                             bar.style.opacity = '1'; bar.style.width = '70%';
-                            this.loadHolidays();
+                            await this.loadHolidays();
+                            document.addEventListener("visibilitychange", () => { if (!document.hidden) this.loadHolidays(); });
                             await this.fetchSubjects();
                             this.getDays();
                             bar.style.width = '100%';
@@ -396,28 +407,62 @@
                 },
 
                 // ── Holiday helpers ───────────────────────────────────────
-                loadHolidays() {
+                async loadHolidays() {
                     try {
-                        const saved = localStorage.getItem('attendify_holidays');
-                        if (saved) this.holidays = JSON.parse(saved);
-                    } catch(e) { this.holidays = {}; }
+                        const response = await fetch('/api/calendar/exceptions');
+                        if (!response.ok) throw new Error('Unable to load calendar exceptions');
+                        this.applyExceptions(await response.json());
+                        this.hasLegacyHolidays = Boolean(localStorage.getItem('attendify_holidays'));
+                    } catch (err) { window.showToast(err.message, 'error'); }
                 },
-
+                applyExceptions(calendar) {
+                    this.holidays = Object.fromEntries(calendar.holidays.map(date => [date, true]));
+                    this.cancellations = calendar.cancellations;
+                    window.dispatchEvent(new Event('attendify-settings-changed'));
+                },
                 isHoliday(day) {
-                    if (!day) return false;
-                    const dow = new Date(this.currentYear, this.currentMonth, day).getDay();
-                    if (dow === 0 || dow === 6) return true; // Sunday or Saturday
-                    return !!this.holidays[this.getFullDateStringForDay(day)];
+                    return Boolean(day && this.holidays[this.getFullDateStringForDay(day)]);
                 },
-
-                toggleHoliday(dateStr) {
-                    if (this.holidays[dateStr]) {
-                        delete this.holidays[dateStr];
-                    } else {
-                        this.holidays[dateStr] = true;
-                    }
-                    this.holidays = { ...this.holidays }; // trigger Alpine reactivity
-                    localStorage.setItem('attendify_holidays', JSON.stringify(this.holidays));
+                isCancelled(day) {
+                    return Boolean(day && this.selectedSubject && this.cancellations.some(item => item.date === this.getFullDateStringForDay(day) && item.subjectId === this.selectedSubject.id));
+                },
+                async toggleHoliday(dateStr) {
+                    if (this.exceptionsBusy) return;
+                    this.exceptionsBusy = true;
+                    try {
+                        const response = await fetch('/api/calendar/holidays/' + dateStr, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !this.holidays[dateStr] }) });
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error);
+                        this.applyExceptions(data);
+                        window.showToast('Holiday synced to your account', 'success');
+                    } catch (err) { window.showToast(err.message, 'error'); }
+                    finally { this.exceptionsBusy = false; }
+                },
+                async toggleCancellation() {
+                    if (this.exceptionsBusy || !this.selectedSubject) return;
+                    this.exceptionsBusy = true;
+                    try {
+                        const response = await fetch('/api/calendar/cancellations', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: this.getFullDateStringForDay(this.activeDate), subjectId: this.selectedSubject.id, enabled: !this.isCancelled(this.activeDate) }) });
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data.error);
+                        this.applyExceptions(data);
+                        window.showToast('Cancelled classes synced to your account', 'success');
+                    } catch (err) { window.showToast(err.message, 'error'); }
+                    finally { this.exceptionsBusy = false; }
+                },
+                async importLegacyHolidays() {
+                    if (!confirm('Import holidays saved in this browser into your current account? Only continue if these holidays belong to you.')) return;
+                    try {
+                        const saved = JSON.parse(localStorage.getItem('attendify_holidays') || '{}');
+                        for (const [date, enabled] of Object.entries(saved)) {
+                            if (enabled !== true || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+                            const response = await fetch('/api/calendar/holidays/' + date, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true }) });
+                            if (!response.ok) throw new Error('Some holidays could not be imported. Your browser copy is still available.');
+                        }
+                        localStorage.removeItem('attendify_holidays');
+                        await this.loadHolidays();
+                        window.showToast('Browser holidays imported', 'success');
+                    } catch (err) { window.showToast(err.message, 'error'); }
                 },
 
                 // ── Calendar Visual Helpers ───────────────────────────────
@@ -435,12 +480,13 @@
                 },
 
                 hasRecord(day) {
-                    return this.getRecordsForDay(day).length > 0 || this.isHoliday(day);
+                    return this.getRecordsForDay(day).length > 0 || this.isHoliday(day) || this.isCancelled(day);
                 },
 
                 getDayStatusClass(day) {
                     // Holiday takes highest priority
                     if (this.isHoliday(day)) return "bg-yellow-500/10 border-yellow-500/30 text-yellow-400";
+                    if (this.isCancelled(day)) return "bg-purple-500/10 border-purple-500/30 text-purple-400";
 
                     const todayStr = window.getLocalDateString();
                     const thisDayStr = this.getFullDateStringForDay(day);
@@ -466,6 +512,7 @@
 
                 getIndicatorClass(day) {
                     if (this.isHoliday(day)) return "bg-yellow-500";
+                    if (this.isCancelled(day)) return "bg-purple-500";
                     const records = this.getRecordsForDay(day);
                     if (records.length === 0) return "";
                     const hasAbsent  = records.some(r => r.status === 'absent');
@@ -513,7 +560,8 @@
                             await this.selectSubject(this.selectedSubject);
                             this.activeDateRecords = this.getRecordsForDay(this.activeDate);
                         } else {
-                            window.showToast("Failed to save", "error");
+                            const data = await res.json();
+                            window.showToast(data.error || "Failed to save", "error");
                         }
                     } catch (e) {
                         console.error('Error adding log', e);

@@ -56,7 +56,7 @@ app.use(express.static(path.join(__dirname, "public"), { index: false }));
 app.get("/favicon.ico", (_req, res) => res.status(204).end());
 app.use((_req, res) => res.status(404).type('text').send('Page not found'));
 app.use((err, _req, res, _next) => {
-  console.error("Attendify request failed:", err.name);
+  console.error("Attendify request failed:", err.name, err.status, err.errors?.map(error => error.code));
   res.status(500).json({ error: "The request could not be completed. Please try again." });
 });
 if (require.main === module) app.listen(process.env.PORT || 3000, () => console.log("Attendify server ready"));

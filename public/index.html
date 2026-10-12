@@ -834,6 +834,7 @@
                         total_attended: 0,
                     },
                     timetable: [],
+                    calendarExceptions: { holidays: [], cancellations: [] },
 
                     // Subject Management Modal State
                     isModalOpen: false,
@@ -878,8 +879,10 @@
 
                     async fetchTimetable() {
                         try {
-                            const res = await fetch("/api/timetable");
+                            const [res, exRes] = await Promise.all([fetch("/api/timetable"), fetch("/api/calendar/exceptions")]);
+                            if (!res.ok || !exRes.ok) throw new Error("Unable to load your schedule");
                             this.timetable = await res.json();
+                            this.calendarExceptions = await exRes.json();
                         } catch (e) {
                             console.error("Timetable fetch failed", e);
                         }
@@ -984,7 +987,12 @@
                         );
                     },
 
+                    isExcludedToday(subjectId) {
+                        const date = window.getLocalDateString();
+                        return this.calendarExceptions.holidays.includes(date) || this.calendarExceptions.cancellations.some(item => item.date === date && item.subjectId === subjectId);
+                    },
                     async massBunkSubject(subjectId, subjectName) {
+                        await this.fetchTimetable();
                         if (
                             !confirm(
                                 `Are you sure you want to bunk ALL of today's slots for ${subjectName}?`,
@@ -1007,7 +1015,7 @@
                         const slotsToday = this.timetable.filter(
                             (s) =>
                                 s.day.toLowerCase() === todayName &&
-                                s.subjectId === subjectId.toString(),
+                                s.subjectId === subjectId.toString() && !this.isExcludedToday(s.subjectId),
                         );
 
                         if (slotsToday.length === 0) {
@@ -1026,8 +1034,8 @@
 
                         try {
                             // Mark as absent X times (where X is the number of slots today)
-                            await Promise.all(
-                                slotsToday.map(() =>
+                            for (const slot of slotsToday) {
+                                const result = await
                                     fetch("/api/attendance/mark", {
                                         method: "POST",
                                         headers: {
@@ -1038,19 +1046,20 @@
                                             status: "absent",
                                             date: today,
                                         }),
-                                    }),
-                                ),
-                            );
+                                    });
+                                if (!result.ok) throw new Error((await result.json()).error || 'Unable to mark this class');
+                            }
 
                             showToast("Slots bunked successfully!", "success");
                             await this.fetchDashboard();
                         } catch (e) {
                             console.error("Bunk failed", e);
-                            showToast("Error saving bunk", "error");
+                            showToast(e.message || "Error saving bunk", "error");
                         }
                     },
 
                     async massBunk() {
+                        await this.fetchTimetable();
                         if (
                             !confirm(
                                 "Are you sure you want to mark all subjects scheduled for today as ABSENT?",
@@ -1070,7 +1079,7 @@
                         const todayName = days[new Date().getDay()];
 
                         const todaySlots = this.timetable.filter(
-                            (s) => s.day.toLowerCase() === todayName,
+                            (s) => s.day.toLowerCase() === todayName && !this.isExcludedToday(s.subjectId),
                         );
 
                         if (todaySlots.length === 0) {
@@ -1092,8 +1101,8 @@
 
                         try {
                             // Mark all as absent
-                            await Promise.all(
-                                subjectIds.map((subjectId) =>
+                            for (const subjectId of subjectIds) {
+                                const result = await
                                     fetch("/api/attendance/mark", {
                                         method: "POST",
                                         headers: {
@@ -1104,15 +1113,15 @@
                                             status: "absent",
                                             date: today,
                                         }),
-                                    }),
-                                ),
-                            );
+                                    });
+                                if (!result.ok) throw new Error((await result.json()).error || 'Unable to mark this class');
+                            }
 
                             showToast("Mass Bunk Recorded!", "success");
                             await this.fetchDashboard();
                         } catch (e) {
                             console.error("Mass bunk failed", e);
-                            showToast("Error during mass bunk", "error");
+                            showToast(e.message || "Error during mass bunk", "error");
                         }
                     },
 

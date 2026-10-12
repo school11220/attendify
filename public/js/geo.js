@@ -44,22 +44,32 @@
             localStorage.setItem(key, '1');
         },
 
+        isExcluded(exceptions, subjectId) {
+            const date = window.getLocalDateString();
+            return exceptions.holidays.includes(date) || exceptions.cancellations.some(item => item.date === date && item.subjectId === subjectId);
+        },
+
         // Main function: check geofence and auto-mark if applicable
         async run() {
             if (!navigator.geolocation) return;
 
-            let timetable, location;
+            let timetable, location, exceptions, preferences;
             try {
-                const [ttRes, locRes] = await Promise.all([
+                const [ttRes, locRes, exRes, prefRes] = await Promise.all([
                     fetch('/api/timetable'),
-                    fetch('/api/settings/location')
+                    fetch('/api/settings/location'),
+                    fetch('/api/calendar/exceptions'),
+                    fetch('/api/settings/preferences')
                 ]);
 
                 // If not authenticated yet, skip silently
-                if (ttRes.status === 401 || locRes.status === 401) return;
+                if (![ttRes, locRes, exRes, prefRes].every(response => response.ok)) return;
 
                 timetable = await ttRes.json();
                 location = await locRes.json();
+                exceptions = await exRes.json();
+                preferences = await prefRes.json();
+                if (!preferences.autoAttendance) return;
             } catch (e) {
                 return; // Network error, skip silently
             }
@@ -69,7 +79,8 @@
 
             const today = this.today();
             const activeSlots = timetable.filter(slot =>
-                slot.day === today && this.isActiveNow(slot.startTime, slot.endTime)
+                slot.day === today && this.isActiveNow(slot.startTime, slot.endTime) &&
+                !this.isExcluded(exceptions, slot.subjectId)
             );
 
             if (activeSlots.length === 0) return;
@@ -90,7 +101,7 @@
                                 const res = await fetch('/api/attendance/mark', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ subjectId: slot.subjectId, status: 'present', date: today })
+                                    body: JSON.stringify({ subjectId: slot.subjectId, status: 'present', date: today, source: 'auto' })
                                 });
                                 if (res.ok) {
                                     this.setMarkedToday(slot.subjectId);
@@ -123,11 +134,6 @@
                     const reg = await navigator.serviceWorker.register('/service-worker.js');
                     console.log('[PWA] Service worker registered:', reg.scope);
 
-                    // Request notification permission
-                    if ('Notification' in window && Notification.permission === 'default') {
-                        Notification.requestPermission();
-                    }
-
                     // Schedule notifications for today's timetable
                     await this.scheduleNotifications(reg);
 
@@ -145,23 +151,33 @@
 
         async scheduleNotifications(reg) {
             if (!reg.active) return;
-            if (Notification.permission !== 'granted') return;
+            // Clear prior timers even when permissions/preferences are disabled.
+            reg.active.postMessage({ type: 'CLEAR_NOTIFICATIONS' });
+            if (!('Notification' in window) || Notification.permission !== 'granted') return;
             try {
-                const res = await fetch('/api/timetable');
-                if (!res.ok) return;
-                const timetable = await res.json();
-                reg.active.postMessage({ type: 'SCHEDULE_NOTIFICATIONS', slots: timetable });
-            } catch (e) {
-                // Silent fail
-            }
+                const [ttRes, exRes, prefRes] = await Promise.all([fetch('/api/timetable'), fetch('/api/calendar/exceptions'), fetch('/api/settings/preferences')]);
+                if (![ttRes, exRes, prefRes].every(response => response.ok)) return;
+                const [timetable, exceptions, preferences] = await Promise.all([ttRes.json(), exRes.json(), prefRes.json()]);
+                if (!preferences.reminders) return;
+                reg.active.postMessage({ type: 'SCHEDULE_NOTIFICATIONS', slots: timetable.filter(slot => !this.isExcluded(exceptions, slot.subjectId)) });
+            } catch (_) { /* Never schedule on an unknown account preference. */ }
         }
+
     };
 
-    // Run geofence check after a short delay (wait for auth to settle)
-    setTimeout(() => GEO.run(), 2500);
-
-    // Init PWA features
-    GEO.initPWA();
+    async function refreshAutomation() {
+        const clerk = await window.waitForClerk();
+        if (!clerk?.user) return;
+        await GEO.initPWA();
+        await GEO.run();
+    }
+    refreshAutomation();
+    window.addEventListener('attendify-settings-changed', async () => {
+        if ('serviceWorker' in navigator) {
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (reg) await GEO.scheduleNotifications(reg);
+        }
+    });
 
     // Expose for other scripts
     window.GeoAttendance = GEO;
