@@ -33,7 +33,7 @@
     // Preserve configured MFA, new-device challenges, and missing OAuth fields.
     show('auth-controls', false);
     el('status').textContent = 'Complete the additional account verification below.';
-    const options = { routing: 'hash', signInUrl: '/sign-in', signUpUrl: '/sign-up', fallbackRedirectUrl: '/', appearance: { variables: { colorPrimary: '#ed3737' } } };
+    const options = { routing: 'hash', signInUrl: '/sign-in', signUpUrl: '/sign-up', fallbackRedirectUrl: '/', appearance: { variables: { colorPrimary: '#ff3b3b', colorBackground: '#0d0d0d', colorInputBackground: '#050505', colorInputText: '#ffffff', colorText: '#ffffff', colorTextSecondary: '#a3a3a3', fontFamily: 'Inter, sans-serif', borderRadius: '3px' } } };
     if (signup) clerk.mountSignUp(el('advanced'), options);
     else clerk.mountSignIn(el('advanced'), options);
   }
