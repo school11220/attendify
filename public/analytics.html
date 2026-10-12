@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="utf-8" />
-    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport" />
     <title>Attendify - Analytics</title>
     <link rel="icon" href="/logo.png" type="image/png">
 
@@ -76,28 +76,14 @@
     </header>
 
     <!-- Mobile Bottom Nav -->
-    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-deep-bg border-t border-border-color z-50 flex justify-around items-center pt-2 pb-4 px-2 shadow-[0_-10px_40px_rgba(0,0,0,0.8)]">
-        <a href="/" class="flex flex-col items-center gap-1 p-2 text-neutral-500 hover:text-white transition-colors">
-            <span class="material-symbols-outlined text-[24px]">home</span>
-            <span class="text-[9px] font-black uppercase tracking-widest">Home</span>
-        </a>
-        <a href="/subjects" class="flex flex-col items-center gap-1 p-2 text-neutral-500 hover:text-white transition-colors">
-            <span class="material-symbols-outlined text-[24px]">library_books</span>
-            <span class="text-[9px] font-black uppercase tracking-widest">Subjects</span>
-        </a>
-        <a href="/calendar" class="flex flex-col items-center gap-1 p-2 text-neutral-500 hover:text-white transition-colors">
-            <span class="material-symbols-outlined text-[24px]">calendar_month</span>
-            <span class="text-[9px] font-black uppercase tracking-widest">Calendar</span>
-        </a>
-        <a href="/analytics" class="flex flex-col items-center gap-1 p-2 text-primary">
-            <span class="material-symbols-outlined text-[24px]">insights</span>
-            <span class="text-[9px] font-black uppercase tracking-widest">Analytics</span>
-        </a>
-        <a href="/profile" class="flex flex-col items-center gap-1 p-2 text-neutral-500 hover:text-white transition-colors">
-            <span class="material-symbols-outlined text-[24px]">person</span>
-            <span class="text-[9px] font-black uppercase tracking-widest">Profile</span>
-        </a>
-    </nav>
+    <nav class="mobile-nav" aria-label="Main navigation">
+<a href="/"><span class="material-symbols-outlined" aria-hidden="true">home</span><span>Home</span></a>
+<a href="/subjects"><span class="material-symbols-outlined" aria-hidden="true">library_books</span><span>Subjects</span></a>
+<a href="/calendar"><span class="material-symbols-outlined" aria-hidden="true">calendar_month</span><span>Calendar</span></a>
+<a href="/analytics" aria-current="page"><span class="material-symbols-outlined" aria-hidden="true">insights</span><span>Analytics</span></a>
+<a href="/calculator" aria-label="Attendance calculator"><span class="material-symbols-outlined" aria-hidden="true">calculate</span><span>Plan</span></a>
+<a href="/profile"><span class="material-symbols-outlined" aria-hidden="true">person</span><span>Profile</span></a>
+</nav>
 
     <main class="flex-1 w-full max-w-[1280px] mx-auto px-4 sm:px-10 pt-4 sm:pt-10 pb-24 md:pb-10 relative"
         id="main-content" style="opacity: 0; transition: opacity 0.5s ease;">

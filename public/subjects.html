@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="utf-8" />
-    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport" />
     <title>Attendify - Subjects</title>
     <link rel="icon" href="/logo.png" type="image/png">
 
@@ -75,28 +75,14 @@
     </header>
 
     <!-- Mobile Bottom Nav -->
-    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-deep-bg border-t border-border-color z-50 flex justify-around items-center pt-2 pb-4 px-2 shadow-[0_-10px_40px_rgba(0,0,0,0.8)]">
-        <a href="/" class="flex flex-col items-center gap-1 p-2 text-neutral-500 hover:text-white transition-colors">
-            <span class="material-symbols-outlined text-[24px]">home</span>
-            <span class="text-[9px] font-black uppercase tracking-widest">Home</span>
-        </a>
-        <a href="/subjects" class="flex flex-col items-center gap-1 p-2 text-primary">
-            <span class="material-symbols-outlined text-[24px]">library_books</span>
-            <span class="text-[9px] font-black uppercase tracking-widest">Subjects</span>
-        </a>
-        <a href="/calendar" class="flex flex-col items-center gap-1 p-2 text-neutral-500 hover:text-white transition-colors">
-            <span class="material-symbols-outlined text-[24px]">calendar_month</span>
-            <span class="text-[9px] font-black uppercase tracking-widest">Calendar</span>
-        </a>
-        <a href="/analytics" class="flex flex-col items-center gap-1 p-2 text-neutral-500 hover:text-white transition-colors">
-            <span class="material-symbols-outlined text-[24px]">insights</span>
-            <span class="text-[9px] font-black uppercase tracking-widest">Analytics</span>
-        </a>
-        <a href="/profile" class="flex flex-col items-center gap-1 p-2 text-neutral-500 hover:text-white transition-colors">
-            <span class="material-symbols-outlined text-[24px]">person</span>
-            <span class="text-[9px] font-black uppercase tracking-widest">Profile</span>
-        </a>
-    </nav>
+    <nav class="mobile-nav" aria-label="Main navigation">
+<a href="/"><span class="material-symbols-outlined" aria-hidden="true">home</span><span>Home</span></a>
+<a href="/subjects" aria-current="page"><span class="material-symbols-outlined" aria-hidden="true">library_books</span><span>Subjects</span></a>
+<a href="/calendar"><span class="material-symbols-outlined" aria-hidden="true">calendar_month</span><span>Calendar</span></a>
+<a href="/analytics"><span class="material-symbols-outlined" aria-hidden="true">insights</span><span>Analytics</span></a>
+<a href="/calculator" aria-label="Attendance calculator"><span class="material-symbols-outlined" aria-hidden="true">calculate</span><span>Plan</span></a>
+<a href="/profile"><span class="material-symbols-outlined" aria-hidden="true">person</span><span>Profile</span></a>
+</nav>
 
     <!-- Main Content -->
     <main class="flex-1 w-full max-w-[1280px] mx-auto px-4 sm:px-10 pt-4 sm:pt-10 pb-24 md:pb-10 relative"
@@ -112,14 +98,14 @@
 
         <!-- Add Subject Button (Floating or inline based on design) -->
         <button @click="openModal()"
-            class="fixed bottom-28 md:bottom-8 right-8 z-[60] flex items-center justify-center gap-2 h-14 px-6 bg-primary text-white font-black rounded-full hover:scale-105 active:scale-95 transition-all shadow-[0_4px_20px_rgba(255,59,48,0.5)]">
+            class="mobile-add-subject fixed bottom-28 md:bottom-8 right-8 z-[60] flex items-center justify-center gap-2 h-14 px-6 bg-primary text-white font-black rounded-full hover:scale-105 active:scale-95 transition-all shadow-[0_4px_20px_rgba(255,59,48,0.5)]">
             <span class="material-symbols-outlined font-bold text-2xl">add</span>
             <span class="uppercase tracking-widest text-xs">New Subject</span>
         </button>
 
         <div class="grid grid-cols-1 gap-4 sm:gap-6 pb-20">
             <div class="overflow-x-auto bg-card-bg border border-border-color rounded neo-shadow w-full">
-                <table class="min-w-full text-left uppercase tracking-wider divide-y divide-border-color">
+                <table class="mobile-records min-w-full text-left uppercase tracking-wider divide-y divide-border-color">
                     <thead class="bg-black/40">
                         <tr>
                             <th class="px-6 py-4 text-xs font-black text-neutral-500">Subject Name</th>
@@ -143,7 +129,7 @@
                         </template>
                         <template x-for="subject in subjects" :key="subject.id">
                             <tr class="hover:bg-primary/5 transition-colors group">
-                                <td class="px-6 py-5 whitespace-nowrap">
+                                <td data-label="Subject" class="px-6 py-5 whitespace-nowrap">
                                     <div class="flex items-center gap-2">
                                         <div class="font-bold text-sm text-white truncate max-w-[120px]"
                                             x-text="subject.subject_name"></div>
@@ -155,7 +141,7 @@
                                     <div class="text-[10px] text-neutral-500 mt-1"
                                         x-text="subject.faculty_name || 'No Faculty'"></div>
                                 </td>
-                                <td class="px-6 py-5 whitespace-nowrap">
+                                <td data-label="Attendance" class="px-6 py-5 whitespace-nowrap">
                                     <div class="text-xs text-neutral-400 font-medium">
                                         <span class="text-white font-bold" x-text="subject.attended_classes"></span>
                                         Attended /
@@ -165,12 +151,12 @@
                                         x-show="subject.current_percentage < subject.min_requirement_percentage">Deficit
                                         Detected</div>
                                 </td>
-                                <td class="px-6 py-5 whitespace-nowrap">
+                                <td data-label="Target" class="px-6 py-5 whitespace-nowrap">
                                     <span
                                         class="px-2 py-1 border border-border-color bg-white/5 text-white/80 text-[10px] font-black tabular-nums"
                                         x-text="subject.min_requirement_percentage + '%'"></span>
                                 </td>
-                                <td class="px-6 py-5 whitespace-nowrap text-right">
+                                <td data-label="Actions" class="px-6 py-5 whitespace-nowrap text-right">
                                     <div class="flex justify-end gap-3">
                                         <button @click="editModal(subject)"
                                             class="p-2 text-neutral-500 hover:text-white hover:bg-white/10 rounded transition-colors border border-transparent hover:border-border-color">
