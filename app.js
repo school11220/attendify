@@ -4,7 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const { clerkMiddleware, getAuth } = require("@clerk/express");
 const app = express();
-const key = process.env.CLERK_PUBLISHABLE_KEY || "";
+const key = process.env.CLERK_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
 const secret = process.env.CLERK_SECRET_KEY || "";
 const configured = Boolean(key && secret);
 if (configured && key.startsWith("pk_live_") !== secret.startsWith("sk_live_")) {
